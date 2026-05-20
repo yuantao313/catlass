@@ -27,21 +27,23 @@ jobs:
           git remote add upstream https://gitcode.com/cann/catlass.git
           git fetch upstream master
 
-      - name: Ensure master branch exists and merge upstream
+      - name: Save action files
         run: |
-          if git show-ref --verify --quiet refs/heads/master; then
-            git checkout master
-            git merge upstream/master --no-edit
-          else
-            git checkout -b master upstream/master
-          fi
+          mkdir -p /tmp/github-backup
+          cp -r .github /tmp/github-backup/ 2>/dev/null || true
 
-      - name: Ensure action files persist
+      - name: Reset master to upstream/master
+        run: |
+          git checkout master
+          git reset --hard upstream/master
+
+      - name: Restore action files
         run: |
           mkdir -p .github/workflows
+          cp -r /tmp/github-backup/.github/* .github/ 2>/dev/null || true
           git add .github/
           if ! git diff --cached --quiet; then
-            git commit -m "sync: restore github action config after upstream merge"
+            git commit -m "sync: add github action config on top of upstream"
           fi
 
       - name: Push to GitHub
