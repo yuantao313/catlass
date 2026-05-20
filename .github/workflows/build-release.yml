@@ -22,12 +22,59 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup conda environment
+      - name: Setup miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
           activate-environment: catlass-build
-          environment-file: environment.ascend950.yml
           auto-activate-base: false
+
+      - name: Install pyyaml for env merging
+        shell: bash -el {0}
+        run: pip install pyyaml
+
+      - name: Merge environment files and create conda env
+        shell: bash -el {0}
+        run: |
+          python3 -c "
+import yaml
+from packaging.version import Version
+
+with open('environment.ascend950.yml') as f:
+    e1 = yaml.safe_load(f)
+with open('environment.yml') as f:
+    e2 = yaml.safe_load(f)
+
+channels = []
+seen = set()
+for c in e1.get('channels', []) + e2.get('channels', []):
+    if c not in seen:
+        channels.append(c)
+        seen.add(c)
+
+dep_map = {}
+for d in e1.get('dependencies', []) + e2.get('dependencies', []):
+    if isinstance(d, str):
+        if '>=' in d:
+            pkg, ver = d.split('>=', 1)
+            if pkg in dep_map:
+                old = dep_map[pkg].split('>=')[1]
+                if Version(ver) > Version(old):
+                    dep_map[pkg] = d
+            else:
+                dep_map[pkg] = d
+        else:
+            dep_map[d] = d
+
+merged = {'name': 'catlass-build', 'channels': channels, 'dependencies': list(dep_map.values())}
+with open('/tmp/merged-env.yml', 'w') as f:
+    yaml.dump(merged, f)
+print('Merged env: channels=%s, deps=%s' % (channels, list(dep_map.values())))
+"
+          if conda env list | grep -q catlass-build; then
+            conda env update -f /tmp/merged-env.yml --prune
+          else
+            conda env create -f /tmp/merged-env.yml
+          fi
 
       - name: Install pip dependencies
         shell: bash -el {0}
