@@ -28,13 +28,21 @@ jobs:
           activate-environment: catlass-build
           auto-activate-base: false
 
-      - name: Install pyyaml for env merging
+      - name: Configure conda package cache
         shell: bash -el {0}
-        run: pip install pyyaml
+        run: conda config --set pkgs_dirs ~/conda_pkgs_dir
 
-      - name: Merge environment files and create conda env
+      - name: Cache conda packages
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ hashFiles('environment.ascend950.yml', 'environment.yml') }}
+
+      - name: Create conda environment
         shell: bash -el {0}
         run: |
+          pip install pyyaml
           python3 -c "
 import yaml
 from packaging.version import Version
@@ -68,13 +76,8 @@ for d in e1.get('dependencies', []) + e2.get('dependencies', []):
 merged = {'name': 'catlass-build', 'channels': channels, 'dependencies': list(dep_map.values())}
 with open('/tmp/merged-env.yml', 'w') as f:
     yaml.dump(merged, f)
-print('Merged env: channels=%s, deps=%s' % (channels, list(dep_map.values())))
 "
-          if conda env list | grep -q catlass-build; then
-            conda env update -f /tmp/merged-env.yml --prune
-          else
-            conda env create -f /tmp/merged-env.yml
-          fi
+          conda env create -f /tmp/merged-env.yml
 
       - name: Install pip dependencies
         shell: bash -el {0}
