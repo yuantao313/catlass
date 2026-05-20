@@ -1,0 +1,69 @@
+name: Build and Release optest
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: [self-hosted, Linux, ascend]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: catlass-build
+          environment-file: environment.ascend950.yml
+          auto-activate-base: false
+
+      - name: Install pip dependencies
+        shell: bash -el {0}
+        run: |
+          pip install --upgrade pip
+          pip install torch torch-npu --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Verify CANN environment
+        shell: bash -el {0}
+        run: |
+          echo "ASCEND_HOME_PATH=$ASCEND_HOME_PATH"
+          if [ -z "$ASCEND_HOME_PATH" ]; then
+            echo "ASCEND_HOME_PATH is not set. Please ensure CANN toolkit is installed."
+            exit 1
+          fi
+
+      - name: Build optest wheel
+        shell: bash -el {0}
+        working-directory: tests/optest
+        run: |
+          bash build.sh
+
+      - name: Determine release tag
+        id: tag
+        shell: bash -el {0}
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "release_tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Release ${{ steps.tag.outputs.release_tag }}
+          files: tests/optest/dist/*.whl
+          generate_release_notes: true
