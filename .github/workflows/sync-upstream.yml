@@ -1,0 +1,49 @@
+name: Sync Upstream to GitHub
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "yuantao313"
+          git config user.email "yuantao313@gmail.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://gitcode.com/cann/catlass.git
+          git fetch upstream master
+
+      - name: Ensure master branch exists and merge upstream
+        run: |
+          if git show-ref --verify --quiet refs/heads/master; then
+            git checkout master
+            git merge upstream/master --no-edit
+          else
+            git checkout -b master upstream/master
+          fi
+
+      - name: Ensure action files persist
+        run: |
+          mkdir -p .github/workflows
+          git add .github/
+          if ! git diff --cached --quiet; then
+            git commit -m "sync: restore github action config after upstream merge"
+          fi
+
+      - name: Push to GitHub
+        run: |
+          git push origin master
